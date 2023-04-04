@@ -56,7 +56,7 @@ def scrape_ytchannel(url):
     return videos
 #------------------------------------------------------------------------
 #QUI E' IL NOSTRO URL, DA AGGIORNARE OGNI VOLTA CHE SERVE
-url_conf = "https://www.youtube.com/@confindustria/videos"
+url_conf = "https://www.youtube.com/@NOME_CANALE/videos"
 result = (scrape_ytchannel(url_conf)) #risultato dello scraping del canale
 #------------------------------------------------------------------------
 #DALLO SCRAPE TROVIAMO UNA LISTA DI LINK
