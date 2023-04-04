@@ -1,0 +1,168 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Apr  3 10:46:14 2023
+
+@author: Nick
+"""
+
+#IMPORT
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+#from selenium.webdriver.support.ui import WebDriverWait
+#from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import time
+
+#CHROME DRIVER
+options = Options()
+options.add_extension(r"C:\Users\Nick\Nextcloud\Università\Tirocinio\Scraping YT\3.4.6_0.crx") #i dont care about cookies
+options.add_extension(r"C:\Users\Nick\Nextcloud\Università\Tirocinio\Scraping YT\1.47.4_0.crx") #ublock origin
+options.add_argument("--start-maximized")
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options) 
+#driver.get(url)
+
+def scrape_ytchannel(url):
+    driver.get(url)
+
+    # SCRIPTINO TO SCROLL PAGE UNTIL IT ENDS
+    WAIT_IN_SECONDS = 5
+    last_height = driver.execute_script("return document.documentElement.scrollHeight")
+
+    while True:
+        # Scroll to the bottom of page
+        driver.execute_script("window.scrollTo(0, arguments[0]);", last_height)
+        # Wait for new videos to show up
+        time.sleep(WAIT_IN_SECONDS)
+
+        # Calculate new document height and compare it with last height
+        new_height = driver.execute_script("return document.documentElement.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
+
+    views = driver.find_elements(By.XPATH, '//div[@id="metadata-line"]/span[1]')
+    titles = driver.find_elements(By.ID, "video-title")
+    links = driver.find_elements(By.ID, "video-title-link")
+
+    videos = []
+    for title, view, link in zip(titles, views, links):
+        video_dict = {
+            'title': title.text,
+            'views': view.text,
+            'link': link.get_attribute('href')
+        }
+        videos.append(video_dict)
+    #result = [videos, subscriber_count]
+
+    return videos
+
+
+url_conf = "https://www.youtube.com/@confindustria/videos"
+result = (scrape_ytchannel(url_conf))
+youtube_links = []
+for i in range(len(result)):
+    youtube_links.append(result[i]["link"])
+driver.close()
+
+#YT LIST OF LINKS SCRAPER: scrapa tutte le info da una lista di link yt
+import requests
+from bs4 import BeautifulSoup
+
+def yt_scraper2(url_list):
+    peh = []
+    for link in url_list:
+        res = requests.get(link)
+        soup = BeautifulSoup(res.content, 'html5lib')
+        link_dict = {}
+        link_dict["title"] = soup.find('meta', attrs={'name': 'title'})["content"]
+        link_dict["keywords"] = soup.find('meta', attrs={'name': 'keywords'})["content"]
+        link_dict["description"] = soup.find('meta', attrs={'name': 'description'})["content"]
+        link_dict["link"] = soup.find('link', attrs={'itemprop': 'url'})["href"]
+        link_dict["views"] = soup.find("meta", itemprop="interactionCount")['content']
+        link_dict["published"] = soup.find("meta", itemprop="datePublished")['content']
+        peh.append(link_dict)
+    return peh
+resultss = yt_scraper2(youtube_links)
+
+
+
+
+#SCRAPE COMMENTI PER GOOGLE API
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+#credentials 
+api_key ="AIzaSyDISCjNbXLy6XNkCufU_TL0xilD7x2AIJA"
+
+def get_comments(video_id):
+    
+    comments = []
+    try:
+        # Create YouTube API client
+        youtube = build("youtube", "v3", developerKey=api_key)
+
+        # Call the API to retrieve the comments
+        results = youtube.commentThreads().list(
+            part="snippet",
+            videoId=video_id,
+            textFormat="plainText"
+        ).execute()
+
+        # Iterate through the comments and add them to the list
+        for item in results["items"]:
+            comment = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
+            comments.append(comment)
+
+    except HttpError as error:
+        # If the video comments are disabled, skip this video and print a warning message
+        if error.resp.status == 403:
+            print(f"WARNING: Comments are disabled for video {video_id}")
+        else:
+            print(f"An error occurred: {error}")
+
+    return comments
+results_ids = [video["link"].split("=")[1] for video in resultss]
+
+
+for id_ in results_ids:
+    for dic in resultss:
+        if "https://www.youtube.com/watch?v=" + id_ == dic["link"]:
+            dic["comments"] = get_comments(id_)
+
+#Saving this shit
+
+    with open('my_list.txt', 'w', encoding="utf-8") as file:
+        for item in resultss:
+            file.write("%s\n" % item)
+
+    import pickle
+
+    with open('my_list.pickle', 'wb') as file:
+        pickle.dump(resultss, file)
+
+    import csv
+
+
+    with open('my_list.csv', 'w', newline='', encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerows(resultss)
+        
+
+    import openpyxl
+
+    # Create a new workbook and select the active worksheet
+    wb = openpyxl.Workbook()
+    ws = wb.active
+
+    # Write the header row
+    header = list(resultss[0].keys())
+    ws.append(header)
+
+    # Write the data rows
+    for row in resultss:
+        values = list(row.values())
+        ws.append(values)
+
+    # Save the workbook
+    wb.save('data.xlsx')
